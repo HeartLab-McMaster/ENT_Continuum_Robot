@@ -59,17 +59,18 @@ def simulate_coil(solenoid_current=15):
     solenoid_radius = 0.1
     solenoid_length = 0.1
     solenoid_turns = 145
+    solenoid_rotation = 45
 
     # Create three solenoids
     solenoid_z = create_solenoid(solenoid_current, solenoid_radius, solenoid_length, solenoid_turns)
-    solenoid_p45 = create_solenoid(solenoid_current, solenoid_radius, solenoid_length, solenoid_turns, 45)
-    solenoid_n45 = create_solenoid(solenoid_current, solenoid_radius, solenoid_length, solenoid_turns, -45)
+    solenoid_pos = create_solenoid(solenoid_current, solenoid_radius, solenoid_length, solenoid_turns, solenoid_rotation)
+    solenoid_neg = create_solenoid(solenoid_current, solenoid_radius, solenoid_length, solenoid_turns, -1*solenoid_rotation)
 
     # Visualization Setup
     pl = pv.Plotter()
 
     # Create PyVista representation of solenoids
-    for solenoid, color, rotation in zip([solenoid_z, solenoid_p45, solenoid_n45], ["blue", "red", "green"], [0, 45, -45]):
+    for solenoid, color, rotation in zip([solenoid_z, solenoid_pos, solenoid_neg], ["blue", "red", "green"], [0, solenoid_rotation, -1*solenoid_rotation]):
         solenoid_points = []
         theta = np.linspace(0, 2 * np.pi, 100)
         x = solenoid_radius * np.cos(theta)
@@ -102,17 +103,17 @@ def simulate_coil(solenoid_current=15):
         
         # Using sensor from library to obtain field at the specified position for each solenoid
         B_sensor_zaxis_blue = sensor.getB(solenoid_z)
-        B_sensor_p45_red = sensor.getB(solenoid_p45)
-        B_sensor_n45_green = sensor.getB(solenoid_n45)
-        B_sensor_total = B_sensor_zaxis_blue + B_sensor_p45_red + B_sensor_n45_green
+        B_sensor_pos_red = sensor.getB(solenoid_pos)
+        B_sensor_neg_green = sensor.getB(solenoid_neg)
+        B_sensor_total = B_sensor_zaxis_blue + B_sensor_pos_red + B_sensor_neg_green
 
 
         print(f"\nMagnetic Field at {position}:")
         print("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
         print(f"Theoretical Calculation: B_x: {B_theoretical[0] * 1000:.5f} mT, B_y: {B_theoretical[1] * 1000:.5f} mT, B_z: {B_theoretical[2] * 1000:.5f} mT")
         print(f"Sensor Measurement of blue (centered): B_x: {B_sensor_zaxis_blue[0] * 1000:.5f} mT, B_y: {B_sensor_zaxis_blue[1] * 1000:.5f} mT, B_z: {B_sensor_zaxis_blue[2] * 1000:.5f} mT")
-        print(f"Sensor Measurement of red (+45): B_x: {B_sensor_p45_red[0] * 1000:.5f} mT, B_y: {B_sensor_p45_red[1] * 1000:.5f} mT, B_z: {B_sensor_p45_red[2] * 1000:.5f} mT")
-        print(f"Sensor Measurement of green (-45): B_x: {B_sensor_n45_green[0] * 1000:.5f} mT, B_y: {B_sensor_n45_green[1] * 1000:.5f} mT, B_z: {B_sensor_n45_green[2] * 1000:.5f} mT")
+        print(f"Sensor Measurement of red (+45): B_x: {B_sensor_pos_red[0] * 1000:.5f} mT, B_y: {B_sensor_pos_red[1] * 1000:.5f} mT, B_z: {B_sensor_pos_red[2] * 1000:.5f} mT")
+        print(f"Sensor Measurement of green (-45): B_x: {B_sensor_neg_green[0] * 1000:.5f} mT, B_y: {B_sensor_neg_green[1] * 1000:.5f} mT, B_z: {B_sensor_neg_green[2] * 1000:.5f} mT")
         print(f"\nTotal theoretical calculation = {B_theoretical * 1000} mT")
         print(f"Total sensor measurement = {B_sensor_total*1000} mT")
         print("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
