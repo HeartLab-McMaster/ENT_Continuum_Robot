@@ -15,8 +15,8 @@ import serial  # Import serial for ESP32 communication
 os.system("cls")
 
 ###################### Setup
-skull = pv.read("C:/Users/raida/OneDrive/Documents/Year 5/IBEHS Cpstone/Magnetization Resources/Skull/skull/leFabShop/to-make-or-not-to-make/Scull_geant_fix02.stl")
-logo = pv.read("C:/Users/raida/OneDrive/Documents/Year 5/IBEHS Cpstone/Magnetization Resources/EXT_RTR/Heart.png")
+skull = pv.read("Scull_geant_fix02.stl")
+logo = pv.read("HeartLabLogo.png")
 
 arrow_label_global = ["X pos","X neg", "Y pos", "Y neg", "Z pos", "Z neg", "XY pos", "XY neg", "XZ neg", "XYZ Z neg", "XYZ YZ neg"]
 global tip_actor
