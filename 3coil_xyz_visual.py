@@ -6,6 +6,12 @@ import os
 import time
 from functools import partial
 import serial  # Import serial for ESP32 communication
+import threading
+
+import pygame
+pygame.init()
+pygame.joystick.init()
+joy = pygame.joystick.Joystick(0)
 
 
 
@@ -22,7 +28,7 @@ arrow_label_global = ["X pos","X neg", "Y pos", "Y neg", "Z pos", "Z neg", "XY p
 global tip_actor
 
 ###################### Setup Serial Communication
-SERIAL_PORT = "COM12" 
+SERIAL_PORT = "COM3" 
 BAUD_RATE = 115200
 
 # Open Serial connection
@@ -141,28 +147,153 @@ def create_solenoid(plane, solenoid_current, solenoid_radius=0.1, solenoid_lengt
             coil_points_X.append(np.column_stack((x_points, y, z)))  # Combine points into 3D coordinates
         return coil_points_X
 
+# Coil Parameters
+solenoid_radius = 0.1
+solenoid_length = 0.1
+solenoid_turns = 145
+solenoid_current = 20
+
+solenoid_x = create_solenoid("x",solenoid_current, solenoid_radius, solenoid_length, solenoid_turns)
+solenoid_y = create_solenoid("y", solenoid_current, solenoid_radius, solenoid_length, solenoid_turns)
+solenoid_z = create_solenoid("z",solenoid_current, solenoid_radius, solenoid_length, solenoid_turns)
+
+# Create a 3D grid of points for magnetic field visualization
+x = np.linspace(-0.2, 0.2, 10)  # Grid along the x-axis
+y = np.linspace(-0.2, 0.2, 10)  # Grid along the y-axis
+z = np.linspace(-0.2, 0.2, 10)  # Grid along the z-axis
+grid_points = np.array(np.meshgrid(x, y, z)).T.reshape(-1, 3)  # Combine into a 3D grid
+
+coil_linesX = pv.PolyData(np.vstack(solenoid_x))  # Create a PolyData object for the coil
+coil_linesY = pv.PolyData(np.vstack(solenoid_y))  # Create a PolyData object for the coil
+coil_linesZ = pv.PolyData(np.vstack(solenoid_z))
+
+
+
+############################### Extend / Retract Functionality
+def extend(state):
+    if state:
+        update_stepper_status("Extending")
+        esp_command("EXT\n")
+    else:
+        update_stepper_status("Idle")
+        esp_command("OFF\n")
+
+
+def retract(state):
+    if state:
+        pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        update_stepper_status("Retracting")
+        esp_command("RTR\n")
+    else:
+        update_stepper_status("Idle")
+        esp_command("OFF\n")
+
+def turn_Complete(state):
+    if state:
+        pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        esp_command("Coil OFF\n")
+        
+##################### 3D Joystick arrows / coil activation
+def coil_activation(_, arrow_label):
+    # green is going into to coil (attract towards coil) - DIR PIN
+    # red is going out from coil (repel away from coil) - DIR PIN
+    if arrow_label == arrow_label_global[0]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        update_arrow([1,0,0])
+        esp_command(f"{arrow_label}\n")
+
+    if arrow_label == arrow_label_global[1]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="red", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        update_arrow([-1,0,0])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[2]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="green", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        update_arrow([0,1,0])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[3]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="red", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        update_arrow([0,-1,0])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[4]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="red", line_width=3, label="Coil Z")
+        update_arrow([0,0,1])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[5]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
+        update_arrow([0,0,-1])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[6]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="green", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        update_arrow([1,1,0])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[7]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="red", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
+        update_arrow([1,-1,0])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[8]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
+        update_arrow([1,0,-1])
+        esp_command(f"{arrow_label}\n")
+
+    if arrow_label == arrow_label_global[9]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="green", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
+        update_arrow([1,1,-1])
+        esp_command(f"{arrow_label}\n")
+        
+    if arrow_label == arrow_label_global[10]:
+        print(f"Activating coils for {arrow_label}")
+        pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
+        pl.add_mesh(coil_linesY, color="red", line_width=3, label="Coil Y")
+        pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
+        update_arrow([1,-1,-1])
+        esp_command(f"{arrow_label}\n")
+
+
 ###################### Coil simulator
 def simulate_coil(solenoid_current=15):
     """Runs the solenoid simulation and visualization."""
-    # Coil Parameters
-    solenoid_radius = 0.1
-    solenoid_length = 0.1
-    solenoid_turns = 145
-    solenoid_current = 20
 
-    solenoid_x = create_solenoid("x",solenoid_current, solenoid_radius, solenoid_length, solenoid_turns)
-    solenoid_y = create_solenoid("y", solenoid_current, solenoid_radius, solenoid_length, solenoid_turns)
-    solenoid_z = create_solenoid("z",solenoid_current, solenoid_radius, solenoid_length, solenoid_turns)
-
-    # Create a 3D grid of points for magnetic field visualization
-    x = np.linspace(-0.2, 0.2, 10)  # Grid along the x-axis
-    y = np.linspace(-0.2, 0.2, 10)  # Grid along the y-axis
-    z = np.linspace(-0.2, 0.2, 10)  # Grid along the z-axis
-    grid_points = np.array(np.meshgrid(x, y, z)).T.reshape(-1, 3)  # Combine into a 3D grid
-
-    coil_linesX = pv.PolyData(np.vstack(solenoid_x))  # Create a PolyData object for the coil
-    coil_linesY = pv.PolyData(np.vstack(solenoid_y))  # Create a PolyData object for the coil
-    coil_linesZ = pv.PolyData(np.vstack(solenoid_z))
 
     # Add the grey coil mesh to the scene
     # pl.add_mesh(coil_linesX, color="blue", line_width=3, label="Coil 1")
@@ -197,97 +328,7 @@ def simulate_coil(solenoid_current=15):
     tip = pv.Arrow(start=tip_start, direction=tip_direction, scale=tip_scale)
     tip_actor = pl.add_mesh(tip, color="black", name="tip")
 
-    ##################### 3D Joystick arrows / coil activation
-    def coil_activation(_, arrow_label):
-        # green is going into to coil (attract towards coil) - DIR PIN
-        # red is going out from coil (repel away from coil) - DIR PIN
-        if arrow_label == arrow_label_global[0]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            update_arrow([1,0,0])
-            esp_command(f"{arrow_label}\n")
 
-        if arrow_label == arrow_label_global[1]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="red", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            update_arrow([-1,0,0])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[2]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="green", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            update_arrow([0,1,0])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[3]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="red", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            update_arrow([0,-1,0])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[4]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="red", line_width=3, label="Coil Z")
-            update_arrow([0,0,1])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[5]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
-            update_arrow([0,0,-1])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[6]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="green", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            update_arrow([1,1,0])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[7]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="red", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            update_arrow([1,-1,0])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[8]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
-            update_arrow([1,0,-1])
-            esp_command(f"{arrow_label}\n")
-
-        if arrow_label == arrow_label_global[9]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="green", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
-            update_arrow([1,1,-1])
-            esp_command(f"{arrow_label}\n")
-            
-        if arrow_label == arrow_label_global[10]:
-            print(f"Activating coils for {arrow_label}")
-            pl.add_mesh(coil_linesX, color="green", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="red", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="green", line_width=3, label="Coil Z")
-            update_arrow([1,-1,-1])
-            esp_command(f"{arrow_label}\n")
     
     # Coil X
     joystick_size = 0.02
@@ -369,35 +410,6 @@ def simulate_coil(solenoid_current=15):
     # XYZ_XZneg_actor = pl.add_mesh(XYZ_XZneg, color="cyan", name="XYZ XZ neg")
 
 
-    ############################### Extend / Retract Functionality
-    def extend(state):
-        if state:
-            update_stepper_status("Extending")
-            esp_command("EXT\n")
-        else:
-            update_stepper_status("Idle")
-            esp_command("OFF\n")
-
-
-    def retract(state):
-        if state:
-            pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            update_stepper_status("Retracting")
-            esp_command("RTR\n")
-        else:
-            update_stepper_status("Idle")
-            esp_command("OFF\n")
-
-    def turn_Complete(state):
-        if state:
-            pl.add_mesh(coil_linesX, color="grey", line_width=3, label="Coil X")
-            pl.add_mesh(coil_linesY, color="grey", line_width=3, label="Coil Y")
-            pl.add_mesh(coil_linesZ, color="grey", line_width=3, label="Coil Z")
-            esp_command("Coil OFF\n")
-
-
     # Extend / Retract Buttons
     pl.add_checkbox_button_widget(extend, value = False, position=(1600, 10), size=30, border_size=2, color_on="blue") 
     pl.add_text("Extend", position=(1565, 40), font_size=14, color="black")
@@ -440,10 +452,60 @@ def simulate_coil(solenoid_current=15):
     ]
 
     # Show the 3D scene
-    pl.show()
+    pl.show(interactive_update=True)
+
+
+def joy_thread():
+    """Thread to handle joystick events."""
+    while True:
+        for event in pygame.event.get():
+            print(event)
+            if event.type == pygame.JOYBUTTONDOWN:
+                if event.button == 0:  # Assuming button 0 is the emergency stop
+                    print("Emergency Stop Activated")
+                    # stop_callback(True)  # Call the emergency stop function
+            elif event.type == pygame.JOYAXISMOTION:
+                # Handle joystick axis motion if needed
+                pass
 
 if __name__ == "__main__":
     # Create a PyVista plotting scene
     pl = pv.Plotter()
     update_stepper_status("Ready")
+    # Start the joystick event thread
+    # joystick_thread = threading.Thread(target=joy_thread, daemon=True)
+    # joystick_thread.start()
+
     simulate_coil()
+    while True:
+        for event in pygame.event.get():
+            # print(event)
+            if event.type == pygame.JOYBUTTONDOWN:
+                if event.button == 0:  # Assuming button 0 is the emergency stop
+                    print("Stop coils")
+                    turn_Complete(True)
+                elif event.button == 2:
+                    print("Retract coils")
+                    retract(True)
+                elif event.button == 1:
+                    print("Extend coils")
+                    extend(True)
+                elif event.button == 3:
+                    print("Stopping catheter movement")
+                    extend(False)
+            elif event.type == pygame.JOYHATMOTION:
+                if event.value == (1, 0):
+                    print("Joystick moved right")
+                    coil_activation(None, "Y neg")
+                elif event.value == (-1, 0):
+                    print("Joystick moved left")
+                    coil_activation(None, "Y pos")
+                elif event.value == (0, 1):
+                    print("Joystick moved up")
+                    coil_activation(None, "X pos")
+                elif event.value == (0, -1):
+                    print("Joystick moved down")
+                    coil_activation(None, "X neg")
+            elif event.type == pygame.JOYAXISMOTION:
+                # Handle joystick axis motion if needed
+                pass
